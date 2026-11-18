@@ -440,7 +440,7 @@ class Lane:
                 # landing there leaves a real second terminal event reachable; safety
                 # there rests instead on every consumer's per-turn release being
                 # idempotent -- see _owns_lane's pop of turn_ids/direct_targets,
-                # sources.pop in the gateway sink, and make_hub_sink dropping
+                # the gateway sink's origins release, and make_hub_sink dropping
                 # lifecycle events outright. It has to be named regardless: a turn
                 # that ends silently leaves a consumer holding slots it can only
                 # release against the ending turn's id -- an active-turn slot that

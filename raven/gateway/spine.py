@@ -109,8 +109,10 @@ class GatewayTurnRunner(AgentTurnRunner):
     async def run(self, req: TurnRequest, emit: Emit, drain: Drain) -> TurnOutcome:
         # Stash the turn's reply address so the sink can route a TurnFailed error
         # reply back to the originating channel (the lifecycle event carries only
-        # conversation_id). Keyed by the lane's conversation id; the sink pops it
-        # on TurnEnded/TurnFailed so the daemon does not accumulate.
+        # conversation_id). Keyed by the lane's conversation id and kept after the
+        # turn ends: a question a background subagent's approval raises has no
+        # live turn of its own to ride, and its only route back to the chat is
+        # this last known source.
         cid = _cid(req)
         self._sources[cid] = req.source
         drain = self._noting_merges(req, drain)
@@ -223,7 +225,11 @@ def _make_gateway_sink(
             origins[event.turn_id] = event.origin
             return
         if isinstance(event, (TurnEnded, TurnFailed)):
-            source = sources.pop(event.conversation_id, None)
+            # Read, not popped: the entry is the conversation's last known
+            # channel address, refreshed by every later turn, and a question
+            # raised between turns -- a background subagent's approval -- still
+            # needs it. origins is the per-turn state and goes.
+            source = sources.get(event.conversation_id)
             origin = origins.pop(event.turn_id, None)
             people = merged.pop(event.turn_id, [])
             if isinstance(event, TurnFailed) and source is not None:

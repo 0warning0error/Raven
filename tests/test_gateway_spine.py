@@ -491,6 +491,32 @@ async def test_a_finished_cron_turn_is_forgotten(how):
     assert len(hub.dispatched) == told_before + 1
 
 
+async def test_a_question_outlives_the_turn_that_opened_the_conversation():
+    """The conversation's last known source survives the turn's end.
+
+    A spawn returns at once and its subagent runs on a task of its own, so the
+    approval its first gated call raises lands after the spawning turn has
+    ended. Popping the source there left the ask with no address to render to:
+    it failed safe to a denial nobody ever saw, and the user's chat reply
+    could not reach the already-lapsed request (measured 2026-11-18 on a WeCom
+    conversation -- every subagent exec approval lapsed undelivered)."""
+    from raven.cli.gateway_commands import _deliver_question_to_channel
+
+    hub = _RecordingHub()
+    sources = {"wecom:u1": _src(channel="wecom", chat_id="u1")}
+    sink = _make_gateway_sink(hub, _ReplyAgent(), sources)
+    await sink(TurnStarted(origin=Origin.USER, conversation_id="wecom:u1", turn_id="t1"))
+    await sink(_finish_of("ended", "wecom:u1", "t1"))
+
+    assert sources.get("wecom:u1") is not None
+    await _deliver_question_to_channel(
+        {"method": "clarify.request", "params": {"conversation_id": "wecom:u1", "question": "Allow the download?"}},
+        sources=sources,
+        hub=hub,
+    )
+    assert hub.dispatched[-1].content == "Allow the download?"
+
+
 def test_a_failed_turn_reply_reads_by_what_the_failure_was():
     """A canonical model-call failure is told as its category; a runner's own
     report is quoted, bounded; a crash, or a report with no words in it, gets
